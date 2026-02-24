@@ -6,13 +6,246 @@ datasource db {
   provider = "postgresql"
 }
 
+enum GlobalRole {
+  USER
+  SUPERADMIN
+}
+
+enum ProgramRole {
+  ATHLETE
+  COACH
+  ADMIN
+}
+
+enum MeasureType {
+  SETS_REPS
+  AMRAP
+  FOR_TIME
+  MAX_LOAD
+  DISTANCE
+  CALORIES
+  TIME
+  ROUNDS_REPS
+  PASS_FAIL
+}
+
+enum AgeGroup {
+  YOUTH
+  ADULT
+  MASTERS
+}
+
+enum PregnancyStatus {
+  NONE
+  PRE_PARTUM
+  POST_PARTUM
+}
+
 model User {
+  id         String     @id @default(uuid())
+  email      String     @unique
+  username   String     @unique
+  password   String
+  globalRole GlobalRole @default(USER) @map("global_role")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  memberships     ProgramMembership[]
+  createdPrograms Program[]
+  workoutResults  WorkoutResult[]
+  athleteProfile  AthleteProfile?
+  pathAssignments PathAssignment[]
+
+  @@map("users")
+}
+
+model Program {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?  @map("image_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  tracks      Track[]
+  memberships ProgramMembership[]
+  exercises   Exercise[]
+
+  @@map("programs")
+}
+
+model Track {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  color       String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  programId String  @map("program_id")
+  program   Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  paths TrackPath[]
+
+  @@map("tracks")
+}
+
+model TrackPath {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isDefault   Boolean  @default(false) @map("is_default")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  trackId String @map("track_id")
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  ageGroup              AgeGroup?        @map("age_group")
+  pregnancyStatus       PregnancyStatus? @map("pregnancy_status")
+  injuryAccommodations  String[]         @map("injury_accommodations")
+
+  workouts    Workout[]
+  assignments PathAssignment[]
+
+  @@map("track_paths")
+}
+
+model PathAssignment {
+  id         String   @id @default(uuid())
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  athleteId   String    @map("athlete_id")
+  athlete     User      @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  trackPathId String    @map("track_path_id")
+  trackPath   TrackPath @relation(fields: [trackPathId], references: [id], onDelete: Cascade)
+
+  @@unique([athleteId, trackPathId])
+  @@map("path_assignments")
+}
+
+model AthleteProfile {
   id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
-  password  String
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("users")
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dateOfBirth     DateTime?        @map("date_of_birth")
+  ageGroup        AgeGroup?        @map("age_group")
+  pregnancyStatus PregnancyStatus  @default(NONE) @map("pregnancy_status")
+  injuries        String[]
+
+  @@map("athlete_profiles")
+}
+
+model ProgramMembership {
+  id       String      @id @default(uuid())
+  role     ProgramRole @default(ATHLETE)
+  joinedAt DateTime    @default(now()) @map("joined_at")
+  isActive Boolean     @default(true) @map("is_active")
+
+  userId    String  @map("user_id")
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId String  @map("program_id")
+  program   Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, programId])
+  @@map("program_memberships")
+}
+
+model Exercise {
+  id                 String      @id @default(uuid())
+  name               String
+  description        String?
+  instructions       String?
+  videoUrl           String?     @map("video_url")
+  defaultMeasureType MeasureType @default(SETS_REPS) @map("default_measure_type")
+  isGlobal           Boolean     @default(false) @map("is_global")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  programId String?  @map("program_id")
+  program   Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  workoutExercises WorkoutExercise[]
+
+  @@map("exercises")
+}
+
+model Workout {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  notes       String?
+  date        DateTime  @db.Date
+  duration    Int?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  trackPathId String    @map("track_path_id")
+  trackPath   TrackPath @relation(fields: [trackPathId], references: [id], onDelete: Cascade)
+
+  exercises WorkoutExercise[]
+  results   WorkoutResult[]
+
+  @@index([trackPathId, date])
+  @@map("workouts")
+}
+
+model WorkoutExercise {
+  id           String      @id @default(uuid())
+  sortOrder    Int         @default(0) @map("sort_order")
+  measureType  MeasureType @map("measure_type")
+  targetValues Json?       @map("target_values")
+  notes        String?
+
+  workoutId  String   @map("workout_id")
+  workout    Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseId String   @map("exercise_id")
+  exercise   Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  results ExerciseResult[]
+
+  @@map("workout_exercises")
+}
+
+model WorkoutResult {
+  id          String    @id @default(uuid())
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  notes       String?
+  rpe         Int?
+
+  workoutId String  @map("workout_id")
+  workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  athleteId String  @map("athlete_id")
+  athlete   User    @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  exerciseResults ExerciseResult[]
+
+  @@map("workout_results")
+}
+
+model ExerciseResult {
+  id           String   @id @default(uuid())
+  actualValues Json?    @map("actual_values")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workoutResultId   String          @map("workout_result_id")
+  workoutResult     WorkoutResult   @relation(fields: [workoutResultId], references: [id], onDelete: Cascade)
+  workoutExerciseId String          @map("workout_exercise_id")
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+
+  @@map("exercise_results")
 }
